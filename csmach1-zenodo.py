@@ -13,8 +13,9 @@ import numpy as np
 import folium
 from streamlit_folium import st_folium
 
-# ─── Page config ──────────────────────────────────────────────────────────────
-#Apply CS-MACH1 unified theme
+from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
+
+# Apply CS-MACH1 unified theme
 apply_cs_mach1_theme(
     page_title="CS-MACH1 – Dataset Registration",
     page_icon="logo.png",
@@ -23,12 +24,14 @@ apply_cs_mach1_theme(
     logo_width=220,
     layout="centered",
 )
-st.image("logo.png", width=180)
-st.set_page_config(
-    page_title="CS-MACH1 – Dataset Registration",
-    page_icon="logo.png",
-    layout="centered",
-)
+
+# Extra centered logo
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    try:
+        st.image("logo.png", width=180)
+    except Exception:
+        pass  # logo optional
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 ZENODO_API_URL   = "https://zenodo.org/api"
@@ -39,6 +42,10 @@ CORDIS_ID        = "101214613"
 CORDIS_URL       = f"https://cordis.europa.eu/project/id/{CORDIS_ID}"
 FUNDING_PROGRAM  = "European Union's Horizon Europe research and innovation programme"
 FUNDING_GRANT    = "101214613"
+
+# Default coordinates for map (Arctic / North Atlantic focus)
+DEFAULT_LAT = 70.0   # °N
+DEFAULT_LON = -10.0  # °E
 
 # Format registry
 FORMAT_INFO = {
@@ -109,18 +116,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Header ───────────────────────────────────────────────────────────────────
-#st.image("logo.png", width=200)
-st.markdown("""
-<div class="cs-mach1-header">
-    <div>
-        <div class="cs-mach1-title">cs-mach1</div>
-        <div class="cs-mach1-subtitle">MArine Citizen science data Horizon</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("## Dataset registration to the cs-mach1 Zenodo Community")
+# Funding badge (kept from original design)
 st.markdown(f"""
 <div class="funding-badge">
     <b>Project:</b> <a href="{CSMACH1_URL}" target="_blank">{CSMACH1_PROJECT}</a><br>
@@ -221,7 +217,7 @@ def analyse_csv(file_bytes: bytes, filename: str) -> tuple[dict, str | None]:
         cols_preview += f", and {len(s['columns']) - 10} more"
     parts.append(f"Variables include: {cols_preview}.")
     parts.append(
-        f"This dataset was collected within the framework of the {cs-mach1_PROJECT}, "
+        f"This dataset was collected within the framework of the {CSMACH1_PROJECT}, "
         f"funded by the {FUNDING_PROGRAM} under Grant Agreement No. {FUNDING_GRANT}."
     )
     s["abstract"] = " ".join(parts)
@@ -255,8 +251,8 @@ def analyse_txt(file_bytes: bytes, filename: str) -> dict:
     return {"n_lines": n_lines, "abstract": abstract, "keywords": ["polar", "cs-mach1"]}
 
 
-# ─── Section 1: DOI or upload ─────────────────────────────────────────────────
-st.markdown('<div class="section-title">Does your dataset already have a DOI? (no opens the uploader) </div>', unsafe_allow_html=True)
+# ─── DOI option ───────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">Or link an existing DOI</div>', unsafe_allow_html=True)
 
 has_doi = st.radio(
     "Select an option", options=["yes", "no"],
@@ -448,7 +444,7 @@ if "sel_lon" not in st.session_state:
     st.session_state.sel_lon = round(csv_sugg.get("lon_mean", DEFAULT_LON), 4)
 
 # Update defaults when a new CSV is loaded and has spatial info
-if csv_sugg.get("lat_mean") and "lat_mean" in csv_sugg:
+if csv_sugg.get("lat_mean") is not None:
     st.session_state.sel_lat = round(csv_sugg["lat_mean"], 4)
     st.session_state.sel_lon = round(csv_sugg["lon_mean"], 4)
 
@@ -585,7 +581,7 @@ def build_metadata(title, abstract_text, description_text, creators,
         f"Representative coordinates: {lat_val:.4f}°N, {lon_val:.4f}°E."
     )
     desc_parts.append(
-        f"Project: {proj or cs-mach1_PROJECT}. "
+        f"Project: {proj or CSMACH1_PROJECT}. "
         f"Funded by the {FUNDING_PROGRAM} under Grant Agreement No. {FUNDING_GRANT}."
     )
 
@@ -604,7 +600,7 @@ def build_metadata(title, abstract_text, description_text, creators,
                     "identifier": "10.13039/501100000780",
                 },
                 "award": {
-                    "title":       {"en": cs-mach1_PROJECT},
+                    "title":       {"en": CSMACH1_PROJECT},
                     "number":      FUNDING_GRANT,
                     "identifiers": [{"scheme": "url", "identifier": CORDIS_URL}],
                 },
@@ -770,10 +766,5 @@ if submit:
             st.error(f"❌ Unexpected error: {e}")
 
 # ─── Footer ───────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown(
-    f"<small>Powered by <a href='{CSMACH1_URL}'>cs-mach1</a> · "
-    f"Grant No. <a href='{CORDIS_URL}'>{FUNDING_GRANT}</a> · "
-    f"<a href='https://zenodo.org/communities/{ZENODO_COMMUNITY}'>Zenodo community</a></small>",
-    unsafe_allow_html=True,
-)
+from cs_mach1_theme import cs_mach1_footer
+cs_mach1_footer("CS-MACH1 Zenodo Uploader • Marine Citizen Science Data Horizon")
