@@ -147,7 +147,7 @@ def apply_cs_mach1_theme(
 
     
     st.markdown(f"<div class='cs-main-header'>{main_title}</div>", unsafe_allow_html=True)
-    st.image(logo_path, width=logo_width)
+    #st.image(logo_path, width=logo_width)
     st.markdown(f"<div class='cs-sub-header'>{subtitle}</div>", unsafe_allow_html=True)
 
     return st.session_state["cs_theme"]
