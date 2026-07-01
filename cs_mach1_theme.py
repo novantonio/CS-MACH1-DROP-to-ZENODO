@@ -98,10 +98,10 @@ def _build_css(palette: dict) -> str:
 def apply_cs_mach1_theme(
     page_title: str = "CS-MACH1",
     page_icon: str = "logo.png",
-    main_title: str = "🌊 CS-MACH1",
+    main_title: str = "CS-MACH1",
     subtitle: str = "Ocean temperature monitoring platform",
     logo_path: str = "logo.png",
-    logo_width: int = 250,
+    logo_width: int = 180,
     layout: str = "wide",
     default_theme: str = DEFAULT_THEME,
     show_theme_picker: bool = True,
@@ -131,18 +131,7 @@ def apply_cs_mach1_theme(
     if "cs_theme" not in st.session_state:
         st.session_state["cs_theme"] = default_theme
 
-    if show_theme_picker:
-        _, picker_col = st.columns([5, 2])
-        with picker_col:
-            st.session_state["cs_theme"] = st.selectbox(
-                "Theme",
-                options=list(THEMES.keys()),
-                index=list(THEMES.keys()).index(st.session_state["cs_theme"]),
-                label_visibility="collapsed",
-                key="cs_theme_picker",
-            )
 
-    palette = THEMES[st.session_state["cs_theme"]]
     st.markdown(_build_css(palette), unsafe_allow_html=True)
 
     try:
@@ -156,7 +145,7 @@ def apply_cs_mach1_theme(
     return st.session_state["cs_theme"]
 
 
-def cs_mach1_footer(text: str = "CS-MACH1 Project • Ocean Temperature Monitoring Platform") -> None:
+def cs_mach1_footer(text: str = "CS-MACH1 Project") -> None:
     """Render the standard CS-MACH1 horizontal-rule + footer."""
     st.markdown("---")
     st.markdown(f"<div class='cs-footer'>{text}</div>", unsafe_allow_html=True)
