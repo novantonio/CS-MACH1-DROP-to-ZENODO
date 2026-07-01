@@ -68,7 +68,7 @@ TIME_NAMES  = {"time", "date", "datetime", "timestamp", "date_time", "time_utc",
 DEPTH_NAMES = {"depth", "depth_m", "pressure", "pres", "z"}
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
-st.image(logo_path, width=logo_width)
+#st.image(logo_path, width=logo_width)
 st.markdown("""
 <style>
     .cs-mach1-header {
