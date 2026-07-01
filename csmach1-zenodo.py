@@ -20,16 +20,11 @@ apply_cs_mach1_theme(
     page_title="CS-MACH1 – Dataset Registration",
     page_icon="logo.png",
     main_title="🌊 CS-MACH1 Zenodo Uploader",
-    subtitle="Register marine citizen science datasets to the cs-mach1 community"
+    subtitle="Register marine citizen science datasets to the cs-mach1 community",
+    layout="centered"
 )
 
-# Extra centered logo
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    try:
-        st.image("logo.png", width=180)
-    except Exception:
-        pass  # logo optional
+
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 ZENODO_API_URL   = "https://zenodo.org/api"
