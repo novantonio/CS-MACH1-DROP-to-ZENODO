@@ -1,3 +1,4 @@
+"""
 CS-MACH1 Zenodo Community Dataset Registration
 Streamlit app — EU-CS-MACH1 community upload with smart CSV/TXT pre-fill and map picker.
 Project: CS-MACH1 (https://cs-mach1.eu/)
