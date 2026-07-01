@@ -21,6 +21,7 @@ apply_cs_mach1_theme(
     page_icon="logo.png",
     main_title="🌊 CS-MACH1 Zenodo Uploader",
     subtitle="Register marine citizen science datasets to the cs-mach1 community",
+    logo_width=220,
     layout="centered",
 )
 
