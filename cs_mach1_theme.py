@@ -130,7 +130,7 @@ def apply_cs_mach1_theme(
 
     if "cs_theme" not in st.session_state:
         st.session_state["cs_theme"] = default_theme
-'''
+
     if show_theme_picker:
         _, picker_col = st.columns([5, 2])
         with picker_col:
@@ -141,7 +141,7 @@ def apply_cs_mach1_theme(
                 label_visibility="collapsed",
                 key="cs_theme_picker",
             )
-'''
+
     palette = THEMES[st.session_state["cs_theme"]]
     st.markdown(_build_css(palette), unsafe_allow_html=True)
 
