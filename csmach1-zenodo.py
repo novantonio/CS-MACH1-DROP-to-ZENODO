@@ -14,6 +14,16 @@ import folium
 from streamlit_folium import st_folium
 
 # ─── Page config ──────────────────────────────────────────────────────────────
+#Apply CS-MACH1 unified theme
+apply_cs_mach1_theme(
+    page_title="CS-MACH1 – Dataset Registration",
+    page_icon="logo.png",
+    main_title="🌊 CS-MACH1 Zenodo Uploader",
+    subtitle="Register marine citizen science datasets to the cs-mach1 community",
+    logo_width=220,
+    layout="centered",
+)
+st.image("logo.png", width=180)
 st.set_page_config(
     page_title="CS-MACH1 – Dataset Registration",
     page_icon="logo.png",
