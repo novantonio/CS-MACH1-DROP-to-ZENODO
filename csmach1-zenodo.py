@@ -1,4 +1,3 @@
-"""
 CS-MACH1 Zenodo Community Dataset Registration
 Streamlit app — EU-CS-MACH1 community upload with smart CSV/TXT pre-fill and map picker.
 Project: CS-MACH1 (https://cs-mach1.eu/)
@@ -15,15 +14,23 @@ from streamlit_folium import st_folium
 
 from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
 
-# Apply CS-MACH1 unified theme (must be called before any other st.*)
+# Apply CS-MACH1 unified theme
 apply_cs_mach1_theme(
     page_title="CS-MACH1 – Dataset Registration",
     page_icon="logo.png",
     main_title="🌊 CS-MACH1 Zenodo Uploader",
     subtitle="Register marine citizen science datasets to the cs-mach1 community",
-    logo_width=180,
+    logo_width=220,
     layout="centered",
 )
+
+# Extra centered logo
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    try:
+        st.image("logo.png", width=180)
+    except Exception:
+        pass  # logo optional
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 ZENODO_API_URL   = "https://zenodo.org/api"
@@ -244,7 +251,17 @@ def analyse_txt(file_bytes: bytes, filename: str) -> dict:
 
 
 # ─── Section 1: DOI or upload ─────────────────────────────────────────────────
-st.markdown('<div class="section-title">Does your dataset already have a DOI?</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">📤 Upload your dataset</div>', unsafe_allow_html=True)
+
+uploaded_file = st.file_uploader(
+    "Drop your file here (CSV, NetCDF, TXT, ZIP, PDF, etc.)",
+    type=None,
+    label_visibility="collapsed",
+    help="Any format accepted. CSV/TSV files get smart auto-fill of metadata.",
+)
+
+# ─── DOI option ───────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">Or link an existing DOI</div>', unsafe_allow_html=True)
 
 has_doi = st.radio(
     "Select an option", options=["yes", "no"],
