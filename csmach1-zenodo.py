@@ -579,13 +579,16 @@ def build_metadata(title, abstract_text, description_text, creators,
         f"Funded by the {FUNDING_PROGRAM} under Grant Agreement No. {FUNDING_GRANT}."
     )
 
+    from datetime import date
+
     metadata = {
-        "title":         title,
-        "description":   "\n\n".join(desc_parts),
-        "resource_type": {"id": "dataset"},
-        "creators":      creators,
-        "rights":        [{"id": lic}],
-        "communities":   [{"id": ZENODO_COMMUNITY}],
+        "title":             title,
+        "description":       "\n\n".join(desc_parts),
+        "resource_type":     {"id": "dataset"},
+        "creators":          creators,
+        "rights":            [{"id": lic}],
+        "communities":       [{"id": ZENODO_COMMUNITY}],
+        "publication_date":  date.today().isoformat(),   # today's date
         "funding": [
             {
                 "funder": {
