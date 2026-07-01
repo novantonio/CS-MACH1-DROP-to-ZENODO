@@ -26,7 +26,6 @@ apply_cs_mach1_theme(
 )
 
 
-
 # ─── Constants ────────────────────────────────────────────────────────────────
 ZENODO_API_URL   = "https://zenodo.org/api"
 ZENODO_COMMUNITY = "https://zenodo.org/communities/cs-mach1/"
