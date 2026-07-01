@@ -19,10 +19,10 @@ from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
 apply_cs_mach1_theme(
     page_title="CS-MACH1 – Dataset Registration",
     page_icon="logo.png",
-    main_title="🌊 CS-MACH1 Zenodo Uploader",
+    main_title="CS-MACH1 Zenodo Uploader",
     subtitle="Register marine citizen science datasets to the cs-mach1 community",
     logo_width=220,
-    layout="centered",
+    layout="centered"
 )
 
 
