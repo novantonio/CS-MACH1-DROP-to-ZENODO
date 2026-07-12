@@ -12,8 +12,12 @@ import pandas as pd
 import numpy as np
 import folium
 from streamlit_folium import st_folium
+from datetime import date
 
 from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
+from email_service import send_email
+import re
+
 
 # Apply CS-MACH1 unified theme
 apply_cs_mach1_theme(
@@ -28,7 +32,7 @@ apply_cs_mach1_theme(
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 ZENODO_API_URL   = "https://zenodo.org/api"
-ZENODO_COMMUNITY = "https://zenodo.org/communities/cs-mach1/"
+ZENODO_COMMUNITY = "cs-mach1"
 CSMACH1_PROJECT  = "CS MACH1 – MArine Citizen science data Horizon"
 CSMACH1_URL      = "https://cs-mach1.eu/"
 CORDIS_ID        = "101214613"
@@ -245,11 +249,22 @@ def analyse_txt(file_bytes: bytes, filename: str) -> dict:
     return {"n_lines": n_lines, "abstract": abstract, "keywords": ["polar", "cs-mach1"]}
 
 
-# ─── DOI option ───────────────────────────────────────────────────────────────
-st.markdown('<div class="section-title">Or link an existing DOI</div>', unsafe_allow_html=True)
+def get_rors(affiliation):
+    try:
+        resp = requests.get(f"https://api.ror.org/v2/organizations?query={affiliation}")
+        resp.raise_for_status()
+        items = resp.json().get("items")
+        return items
+    except Exception as e:
+        print(f"Error getting RORs for {affiliation}: {str(e)}")
 
+
+# ─── DOI option ───────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">Upload a new record or link an existing DOI</div>', unsafe_allow_html=True)
+
+st.write("Do you already have a Zenodo DOI?")
 has_doi = st.radio(
-    "Select an option", options=["yes", "no"],
+    "Do you already have a Zenodo DOI?", options=["no", "yes"],
     label_visibility="collapsed", horizontal=True,
 )
 
@@ -334,204 +349,286 @@ else:
             )
 
 # ─── Section 2: User information ──────────────────────────────────────────────
-st.markdown('<div class="section-title">Information about the user</div>', unsafe_allow_html=True)
+if has_doi != "yes":
+    st.markdown('<div class="section-title">Contact person for the data published</div>', unsafe_allow_html=True)
 
-col_first, col_last, col_orcid = st.columns([2, 2, 2])
-with col_first:
-    author_first = st.text_input("First name", key="author_first_0", placeholder="e.g. Antonio")
-with col_last:
-    author_last  = st.text_input("Last name",  key="author_last_0",  placeholder="e.g. Novellino")
-with col_orcid:
-    author_orcid = st.text_input("ORCID",      key="author_orcid_0", placeholder="0000-0000-0000-0000")
+    col_first, col_last, col_orcid = st.columns([2, 2, 2])
+    with col_first:
+        author_first = st.text_input("First name", key="author_first_0", placeholder="e.g. Antonio")
+    with col_last:
+        author_last  = st.text_input("Last name",  key="author_last_0",  placeholder="e.g. Novellino")
+    with col_orcid:
+        author_orcid = st.text_input("ORCID",      key="author_orcid_0", placeholder="0000-0000-0000-0000")
 
-author_affil = st.text_input(
-    "Affiliation", key="author_affil_0",
-    placeholder="e.g. EMODnet Physics / OGS – National Institute of Oceanography and Applied Geophysics",
-)
+    author_affil = st.text_input(
+        "Affiliation",
+        key="author_affil_0",
+        placeholder="e.g. EMODnet Physics / OGS – National Institute of Oceanography and Applied Geophysics"
+    )
 
-if "num_collaborators" not in st.session_state:
-    st.session_state.num_collaborators = 0
+    selected_ror = None
+    selected_ror_id = None
 
-if st.button("＋ Add another collaborator"):
-    st.session_state.num_collaborators += 1
+    if author_affil:
 
-collaborators = []
-for i in range(st.session_state.num_collaborators):
-    st.markdown(f"*Collaborator {i + 1}*")
-    ca, cb, cc, cd = st.columns([2, 2, 2, 3])
-    with ca:
-        cfirst = st.text_input("First name",  key=f"coll_first_{i}",  placeholder="First name")
-    with cb:
-        clast  = st.text_input("Last name",   key=f"coll_last_{i}",   placeholder="Last name")
-    with cc:
-        corcid = st.text_input("ORCID",       key=f"coll_orcid_{i}",  placeholder="0000-0000-0000-0000")
-    with cd:
-        caffil = st.text_input("Affiliation", key=f"coll_affil_{i}",  placeholder="Institution")
-    collaborators.append({"first": cfirst, "last": clast, "orcid": corcid, "affil": caffil})
+        matches = get_rors(author_affil)
+
+        if matches:
+
+            options = [("Use my original affiliation", None)]
+
+            for item in matches:
+
+                # Display name
+                display_name = next(
+                    (
+                        n["value"]
+                        for n in item["names"]
+                        if "ror_display" in n.get("types", [])
+                    ),
+                    item["names"][0]["value"],
+                )
+
+                location = ""
+
+                if item.get("locations"):
+                    g = item["locations"][0]["geonames_details"]
+                    location = f"{g['name']}, {g['country_name']}"
+
+                options.append(
+                    (
+                        f"{display_name} ({location})",
+                        item,
+                    )
+                )
+
+            choice = st.radio(
+                "Did you mean one of these organizations?",
+                range(len(options)),
+                format_func=lambda i: options[i][0],
+            )
+
+            selected_ror = options[choice][1]
+
+    if selected_ror:
+
+        st.info(
+            f"""
+    **Selected organization**
+
+    **ROR:** {selected_ror["id"]}
+    """
+        )
+        if len(selected_ror["names"]) > 1:
+            st.caption("**Other names:**")
+
+            for n in selected_ror["names"]:
+                st.caption(f"• {n['value']}")
+
+        selected_ror_id = selected_ror["id"]
+        if selected_ror:
+            try:
+                # author_affil = selected_ror.get("names", [{"value": author_affil}])[0].get("value", author_affil)
+                author_affil = selected_ror.get("id", author_affil)
+            except:
+                author_affil = author_affil
+
+    # contributors
+
+    if "num_collaborators" not in st.session_state:
+        st.session_state.num_collaborators = 0
+
+    if st.button("＋ Add another collaborator"):
+        st.session_state.num_collaborators += 1
+
+    collaborators = []
+    for i in range(st.session_state.num_collaborators):
+        st.markdown(f"*Collaborator {i + 1}*")
+        ca, cb, cc, cd = st.columns([2, 2, 2, 3])
+        with ca:
+            cfirst = st.text_input("First name",  key=f"coll_first_{i}",  placeholder="First name")
+        with cb:
+            clast  = st.text_input("Last name",   key=f"coll_last_{i}",   placeholder="Last name")
+        with cc:
+            corcid = st.text_input("ORCID",       key=f"coll_orcid_{i}",  placeholder="0000-0000-0000-0000")
+        with cd:
+            caffil = st.text_input("Affiliation", key=f"coll_affil_{i}",  placeholder="Institution")
+        collaborators.append({"first": cfirst, "last": clast, "orcid": corcid, "affil": caffil})
+
 
 # ─── Section 3: Project ───────────────────────────────────────────────────────
-st.markdown('<div class="section-title">Information about the project</div>', unsafe_allow_html=True)
+if has_doi != "yes":
+    st.markdown('<div class="section-title">Information about the project</div>', unsafe_allow_html=True)
 
-project_name = st.text_input(
-    "Project's name", placeholder="e.g. cs-mach1, MyArctic2024…",
-)
-
-# ─── Section 4: Measurement description ──────────────────────────────────────
-st.markdown('<div class="section-title">Description of the measurement</div>', unsafe_allow_html=True)
-
-description = st.text_area(
-    "Describe how you collected the dataset",
-    placeholder="Describe the collection method, instrumentation used, time period…",
-    height=90,
-)
-
-spatial_deployment = st.radio(
-    "Specify the spatial deployment of the device",
-    options=["Fixed", "Area", "Trajectory"],
-    horizontal=True,
-)
-
-# ─── Section 5: Metadata + abstract ──────────────────────────────────────────
-st.markdown('<div class="section-title">Additional metadata</div>', unsafe_allow_html=True)
-
-default_abstract = csv_sugg.get("abstract", "")
-abstract = st.text_area(
-    "Abstract / Description for Zenodo",
-    value=default_abstract,
-    placeholder="Provide a description of the dataset for the Zenodo record…",
-    height=180,
-    help="Auto-filled from file analysis when possible. Please review and complete.",
-)
-
-col_title, col_license = st.columns([3, 2])
-with col_title:
-    record_title = st.text_input("Dataset title *", placeholder="Title of the dataset on Zenodo")
-with col_license:
-    license_choice = st.selectbox(
-        "License",
-        options=["cc-by-4.0", "cc0-1.0", "cc-by-sa-4.0", "mit", "apache-2.0"],
-        index=0,
+    project_name = st.text_input(
+        "Project's name", placeholder="e.g. cs-mach1, MyArctic2024…",
     )
 
-default_kw   = ", ".join(csv_sugg.get("keywords", []))
-keywords_raw = st.text_input(
-    "Keywords (comma-separated)",
-    value=default_kw,
-    placeholder="polar, oceanography, temperature, Arctic…",
-)
-keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
+    # ─── Section 4: Measurement description ──────────────────────────────────────
+    st.markdown('<div class="section-title">Description of the measurement</div>', unsafe_allow_html=True)
 
-# ─── Section 6: Location picker (Folium mini-map) ────────────────────────────
-st.markdown('<div class="section-title">Geographic location</div>', unsafe_allow_html=True)
+    description = st.text_area(
+        "Describe how you collected the dataset",
+        placeholder="Describe the collection method, instrumentation used, time period…",
+        height=90,
+    )
 
-st.markdown(
-    '<div class="map-hint">🗺️ Click on the map to set the representative coordinates, '
-    'or type them in the fields below. '
-    'If the dataset covers an area, use the centroid.</div>',
-    unsafe_allow_html=True,
-)
+    spatial_deployment = st.radio(
+        "Specify the spatial deployment of the device",
+        options=["Fixed", "Area", "Trajectory"],
+        horizontal=True,
+    )
 
-# Session state defaults (pre-filled from CSV centroid if available)
-if "sel_lat" not in st.session_state:
-    st.session_state.sel_lat = round(csv_sugg.get("lat_mean", DEFAULT_LAT), 4)
-if "sel_lon" not in st.session_state:
-    st.session_state.sel_lon = round(csv_sugg.get("lon_mean", DEFAULT_LON), 4)
+    # ─── Section 5: Metadata + abstract ──────────────────────────────────────────
+    st.markdown('<div class="section-title">Additional metadata</div>', unsafe_allow_html=True)
 
-# Update defaults when a new CSV is loaded and has spatial info
-if csv_sugg.get("lat_mean") is not None:
-    st.session_state.sel_lat = round(csv_sugg["lat_mean"], 4)
-    st.session_state.sel_lon = round(csv_sugg["lon_mean"], 4)
+    col_title, col_license = st.columns([3, 2])
+    with col_title:
+        record_title = st.text_input("Dataset title *", placeholder="Title of the dataset on Zenodo")
+    with col_license:
+        license_choice = st.selectbox(
+            "License",
+            options=["cc-by-4.0", "cc0-1.0", "cc-by-sa-4.0", "mit", "apache-2.0"],
+            index=0,
+        )
 
-# Folium mini-map
-_clat = st.session_state.sel_lat
-_clon = st.session_state.sel_lon
+    default_abstract = csv_sugg.get("abstract", "")
+    abstract = st.text_area(
+        "Abstract / Description for Zenodo",
+        value=default_abstract,
+        placeholder="Provide a description of the dataset for the Zenodo record…",
+        height=180,
+        help="Auto-filled from file analysis when possible. Please review and complete.",
+    )
 
-m = folium.Map(location=[_clat, _clon], zoom_start=4, tiles=None)
-folium.TileLayer(
-    tiles="CartoDB positron", name="CartoDB Positron",
-    overlay=False, control=True, show=True,
-).add_to(m)
-folium.TileLayer(
-    tiles=(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/"
-        "Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}"
-    ),
-    attr="Esri", name="Esri Ocean", overlay=False, control=True,
-).add_to(m)
-folium.TileLayer(
-    tiles=(
-        "https://tiles.emodnet-bathymetry.eu/wmts/1.0.0/"
-        "mean_multicolour/default/web_mercator/{z}/{y}/{x}.png"
-    ),
-    attr="© EMODnet Bathymetry",
-    name="EMODnet Bathymetry",
-    overlay=False, control=True, show=False,
-).add_to(m)
-folium.LayerControl().add_to(m)
+    default_kw   = ", ".join(csv_sugg.get("keywords", []))
+    keywords_raw = st.text_input(
+        "Keywords (comma-separated)",
+        value=default_kw,
+        placeholder="polar, oceanography, temperature, Arctic…",
+    )
+    keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()]
 
-folium.Marker(
-    location=[_clat, _clon],
-    tooltip=f"Selected: {_clat:.4f}°N, {_clon:.4f}°E",
-    icon=folium.Icon(color="blue", icon="tint", prefix="fa"),
-).add_to(m)
+    scoop_concept_url = st.text_input(
+        label="SCOOP Concept URL (optional)",
+        placeholder="https://www.scoop-ocean.org/catalogue/SCOOP94/wave-gauge",
+        help=(
+            "Optional. Enter the URL of the corresponding SCOOP concept "
+            "(e.g. https://www.scoop-ocean.org/catalogue/SCOOP94/wave-gauge)."
+        ),
+    )
 
-# Bounding box from CSV if available
-if "lat_min" in csv_sugg and "lon_min" in csv_sugg:
-    folium.Rectangle(
-        bounds=[
-            [csv_sugg["lat_min"], csv_sugg["lon_min"]],
-            [csv_sugg["lat_max"], csv_sugg["lon_max"]],
-        ],
-        color="#1a4f8a", weight=1.5, fill=True, fill_opacity=0.07,
-        tooltip="Dataset spatial extent (from CSV)",
+    # ─── Section 6: Location picker (Folium mini-map) ────────────────────────────
+    st.markdown('<div class="section-title">Geographic location</div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="map-hint">🗺️ Click on the map to set the representative coordinates, '
+        'or type them in the fields below. '
+        'If the dataset covers an area, use the centroid.</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Session state defaults (pre-filled from CSV centroid if available)
+    if "sel_lat" not in st.session_state:
+        st.session_state.sel_lat = round(csv_sugg.get("lat_mean", DEFAULT_LAT), 4)
+    if "sel_lon" not in st.session_state:
+        st.session_state.sel_lon = round(csv_sugg.get("lon_mean", DEFAULT_LON), 4)
+
+    # Update defaults when a new CSV is loaded and has spatial info
+    if csv_sugg.get("lat_mean") is not None:
+        st.session_state.sel_lat = round(csv_sugg["lat_mean"], 4)
+        st.session_state.sel_lon = round(csv_sugg["lon_mean"], 4)
+
+    # Folium mini-map
+    _clat = st.session_state.sel_lat
+    _clon = st.session_state.sel_lon
+
+    m = folium.Map(location=[_clat, _clon], zoom_start=4, tiles=None)
+    folium.TileLayer(
+        tiles="CartoDB positron", name="CartoDB Positron",
+        overlay=False, control=True, show=True,
+    ).add_to(m)
+    folium.TileLayer(
+        tiles=(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}"
+        ),
+        attr="Esri", name="Esri Ocean", overlay=False, control=True,
+    ).add_to(m)
+    folium.TileLayer(
+        tiles=(
+            "https://tiles.emodnet-bathymetry.eu/wmts/1.0.0/"
+            "mean_multicolour/default/web_mercator/{z}/{y}/{x}.png"
+        ),
+        attr="© EMODnet Bathymetry",
+        name="EMODnet Bathymetry",
+        overlay=False, control=True, show=False,
+    ).add_to(m)
+    folium.LayerControl().add_to(m)
+
+    folium.Marker(
+        location=[_clat, _clon],
+        tooltip=f"Selected: {_clat:.4f}°N, {_clon:.4f}°E",
+        icon=folium.Icon(color="blue", icon="tint", prefix="fa"),
     ).add_to(m)
 
-map_result = st_folium(
-    m,
-    use_container_width=True,
-    height=380,
-    returned_objects=["last_clicked"],
-    key="location_map",
-)
+    # Bounding box from CSV if available
+    if "lat_min" in csv_sugg and "lon_min" in csv_sugg:
+        folium.Rectangle(
+            bounds=[
+                [csv_sugg["lat_min"], csv_sugg["lon_min"]],
+                [csv_sugg["lat_max"], csv_sugg["lon_max"]],
+            ],
+            color="#1a4f8a", weight=1.5, fill=True, fill_opacity=0.07,
+            tooltip="Dataset spatial extent (from CSV)",
+        ).add_to(m)
 
-# Process map click → update session state and rerun
-if map_result and map_result.get("last_clicked"):
-    clicked = map_result["last_clicked"]
-    new_lat  = round(clicked["lat"], 4)
-    new_lon  = round(clicked["lng"], 4)
-    if new_lat != st.session_state.sel_lat or new_lon != st.session_state.sel_lon:
-        st.session_state.sel_lat = new_lat
-        st.session_state.sel_lon = new_lon
-        st.rerun()
-
-# Editable coordinate fields (synced with map)
-_lat_key = f"lat_input_{st.session_state.sel_lat}"
-_lon_key = f"lon_input_{st.session_state.sel_lon}"
-
-col_lat, col_lon = st.columns(2)
-with col_lat:
-    lat = st.number_input(
-        "Latitude (°N)",
-        value=st.session_state.sel_lat,
-        min_value=-90.0, max_value=90.0,
-        step=0.0001, format="%.4f",
-        key=_lat_key,
-    )
-with col_lon:
-    lon = st.number_input(
-        "Longitude (°E)",
-        value=st.session_state.sel_lon,
-        min_value=-180.0, max_value=180.0,
-        step=0.0001, format="%.4f",
-        key=_lon_key,
+    map_result = st_folium(
+        m,
+        use_container_width=True,
+        height=380,
+        returned_objects=["last_clicked"],
+        key="location_map",
     )
 
-# Sync manual edits back to session state
-if lat != st.session_state.sel_lat or lon != st.session_state.sel_lon:
-    st.session_state.sel_lat = lat
-    st.session_state.sel_lon = lon
+    # Process map click → update session state and rerun
+    if map_result and map_result.get("last_clicked"):
+        clicked = map_result["last_clicked"]
+        new_lat  = round(clicked["lat"], 4)
+        new_lon  = round(clicked["lng"], 4)
+        if new_lat != st.session_state.sel_lat or new_lon != st.session_state.sel_lon:
+            st.session_state.sel_lat = new_lat
+            st.session_state.sel_lon = new_lon
+            st.rerun()
 
-st.caption(f"📍 Selected point: **{st.session_state.sel_lat:.4f}°N, {st.session_state.sel_lon:.4f}°E**")
+    # Editable coordinate fields (synced with map)
+    _lat_key = f"lat_input_{st.session_state.sel_lat}"
+    _lon_key = f"lon_input_{st.session_state.sel_lon}"
+
+    col_lat, col_lon = st.columns(2)
+    with col_lat:
+        lat = st.number_input(
+            "Latitude (°N)",
+            value=st.session_state.sel_lat,
+            #! min_value=-90.0, max_value=90.0,
+            step=0.0001, format="%.4f",
+            key=_lat_key,
+        )
+    with col_lon:
+        lon = st.number_input(
+            "Longitude (°E)",
+            value=st.session_state.sel_lon,
+            #!min_value=-180.0, max_value=180.0,
+            step=0.0001, format="%.4f",
+            key=_lon_key,
+        )
+
+    # Sync manual edits back to session state
+    if lat != st.session_state.sel_lat or lon != st.session_state.sel_lon:
+        st.session_state.sel_lat = lat
+        st.session_state.sel_lon = lon
+
+    st.caption(f"📍 Selected point: **{st.session_state.sel_lat:.4f}°N, {st.session_state.sel_lon:.4f}°E**")
 
 # ─── Zenodo helpers ───────────────────────────────────────────────────────────
 
@@ -558,36 +655,62 @@ def build_creators(primary: dict, colls: list) -> list:
                 {"scheme": "orcid", "identifier": a["orcid"]}
             ]
         if a.get("affil"):
-            creator["affiliations"] = [{"name": a["affil"]}]
+            if 'ror.org' in a.get("affil", ""):
+                if "/" in a.get("affil"):
+                    aff = a.get("affil").split("/")[-1]
+                else:
+                    aff = a.get("affil")
+                creator["affiliations"] = [
+                    {
+                        "id": aff
+                    }
+                ] 
+            else:
+                creator["affiliations"] = [
+                        {
+                            "name": a["affil"]
+                        }
+                    ]
         result.append(creator)
     return result
 
 
 def build_metadata(title, abstract_text, description_text, creators,
-                   spatial, proj, kw, lat_val, lon_val, lic):
+                   spatial, proj, kw, lat_val, lon_val, lic, author_ror, scoop_concept_url=None):
     desc_parts = []
     if abstract_text.strip():
         desc_parts.append(abstract_text.strip())
     if description_text.strip():
         desc_parts.append(f"Collection method: {description_text.strip()}")
-    desc_parts.append(f"Spatial deployment: {spatial}.")
-    desc_parts.append(
-        f"Representative coordinates: {lat_val:.4f}°N, {lon_val:.4f}°E."
-    )
+    if spatial:
+        desc_parts.append(f"Spatial deployment: {spatial}.")
+    if lat_val and lon_val:
+        desc_parts.append(
+            f"Representative coordinates: {lat_val:.4f}°N, {lon_val:.4f}°E."
+        )
+    if author_ror:
+        desc_parts.append(
+            f"Author's affiliation ROR: {author_ror}"
+        )
+    if scoop_concept_url:
+        desc_parts.append(
+            f"SCOOP concept: {scoop_concept_url}"
+        )
     desc_parts.append(
         f"Project: {proj or CSMACH1_PROJECT}. "
         f"Funded by the {FUNDING_PROGRAM} under Grant Agreement No. {FUNDING_GRANT}."
     )
 
-    from datetime import date
+    description = "\n\n".join(desc_parts)
+
 
     metadata = {
         "title":             title,
-        "description":       "\n\n".join(desc_parts),
+        "description":       description,
         "resource_type":     {"id": "dataset"},
         "creators":          creators,
         "rights":            [{"id": lic}],
-        "communities":       [{"id": ZENODO_COMMUNITY}],
+        "communities":       [{"identifier": ZENODO_COMMUNITY}],
         "publication_date":  date.today().isoformat(),   # today's date
         "funding": [
             {
@@ -603,20 +726,27 @@ def build_metadata(title, abstract_text, description_text, creators,
                 },
             }
         ],
+        
+        "publisher": "Zenodo"
     }
     if kw:
         metadata["subjects"] = [{"subject": k} for k in kw]
+
     return metadata
 
 
 def create_draft(token, metadata):
-    r = requests.post(
-        f"{ZENODO_API_URL}/records",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-        json={"metadata": metadata},
-    )
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.post(
+            f"{ZENODO_API_URL}/records",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+            json={"metadata": metadata},
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        st.error(f"Error creating draft: {e}")
+        return None
 
 
 def upload_file_to_draft(token, record_id, file_bytes, filename):
@@ -638,16 +768,7 @@ def upload_file_to_draft(token, record_id, file_bytes, filename):
     return r.json()
 
 
-def publish_draft(token, record_id):
-    r = requests.post(
-        f"{ZENODO_API_URL}/records/{record_id}/draft/actions/publish",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    r.raise_for_status()
-    return r.json()
-
-
-def add_existing_doi_to_community(token, doi):
+def get_record(token, doi):
     r = requests.get(
         f"{ZENODO_API_URL}/records",
         params={"q": f"doi:{doi}"},
@@ -658,13 +779,146 @@ def add_existing_doi_to_community(token, doi):
     if not hits:
         raise ValueError(f"No record found for DOI: {doi}")
     record_id = hits[0]["id"]
-    requests.post(
-        f"{ZENODO_API_URL}/communities/{ZENODO_COMMUNITY}/records",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-        json={"records": [{"id": str(record_id)}]},
+    r = requests.get(
+        f"{ZENODO_API_URL}/records/{record_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    r.raise_for_status()
+    return r.json(), record_id
+
+
+def publish_draft(token, record_id):
+    r = requests.post(
+        f"{ZENODO_API_URL}/records/{record_id}/draft/actions/publish",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def add_existing_doi_to_community(token, record_id, community_id=ZENODO_COMMUNITY):
+    r = requests.post(
+        f"{ZENODO_API_URL}/records/{record_id}/communities",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "communities": [
+                {
+                    "id": community_id
+                }
+            ]
+        },
     ).raise_for_status()
     return record_id
 
+
+def add_record_to_community(token, record_id, community_id=ZENODO_COMMUNITY):
+    r = requests.post(
+        f"{ZENODO_API_URL}/records/{record_id}/communities",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "communities": [
+                {
+                    "id": community_id
+                }
+            ]
+        },
+    )
+
+    r.raise_for_status()
+    return r.json()
+
+
+def verify_orcid(orcid):
+    pattern = r"^\d{4}-\d{4}-\d{4}-\d{4}$"
+    if not re.match(pattern, orcid):
+        return False, "Invalid ORCID format. Expected: 0000-0000-0000-0000"
+    headers = {
+    "Accept": "application/json"
+    }
+
+    response = requests.get(
+    f"https://pub.orcid.org/v3.0/{orcid}/person",
+    headers=headers
+    )
+
+    if response.status_code == 200:
+        return True, ""
+    elif response.status_code == 404:
+        return False, "ORCID doesn't exist"
+    else:
+        return False, f"Error verifying ORCID: {response.text}"
+# --- Show selected record if preexisting --------------------------------------
+if has_doi == "yes" and existing_doi:
+    try:
+        json_resp, record_id = get_record(ZENODO_TOKEN, existing_doi)
+        metadata = json_resp.get("metadata", {})
+
+        title = metadata.get("title", "-")
+        doi = json_resp.get("doi", existing_doi)
+        abstract = metadata.get("description", "No abstract available.")
+
+        creators = metadata.get("creators", [])
+        authors = []
+
+        for c in creators:
+            po = c.get("person_or_org", {})
+            if po:
+                authors.append(po.get("name", "Unknown"))
+            else:
+                authors.append(c.get("name", "Unknown"))
+
+        with st.container(border=True):
+            st.markdown("**Record to be linked:**")
+
+            st.write(f"Record ID: {record_id}")
+            st.write(f"DOI: {doi}")
+
+            st.markdown(f"**Title**\n\n{title}")
+
+            st.markdown("**Authors**")
+            if authors:
+                for author in authors:
+                    st.write(f"• {author}")
+            else:
+                st.write("-")
+
+            st.markdown("**Abstract**")
+            # st.info(abstract)
+            st.markdown(abstract, unsafe_allow_html=True)
+
+            record_url = (
+                json_resp.get("links", {}).get("self_html")
+                or json_resp.get("links", {}).get("latest_html")
+            )
+
+            if record_url:
+                st.link_button(
+                    "Open record on Zenodo",
+                    record_url,
+                    use_container_width=True,
+                )
+    except requests.exceptions.HTTPError as e:
+        st.error(f"❌ Zenodo HTTP error: {e.response.status_code} — {e.response.text}")
+    except ValueError as e:
+        st.error(f"❌ {e}")
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {e}")
+
+    
+email_addrs = st.text_input("Contact email address", placeholder="e.g. your.email@institution.edu")
+
+try:
+    with open('gdpr.txt', 'r', encoding='utf-8') as f:
+        gdpr_text = f.read()
+    st.caption(gdpr_text)
+except Exception as e:
+    pass
 
 # ─── Submit ───────────────────────────────────────────────────────────────────
 st.markdown("---")
@@ -682,26 +936,28 @@ if submit:
         errors.append("Please enter the existing dataset DOI.")
     if has_doi == "no" and not uploaded_file:
         errors.append("Please upload a dataset file.")
-    if not (author_first or author_last):
+    if has_doi == "no" and not (author_first or author_last):
         errors.append("Please enter at least the first author's name.")
     if has_doi == "no" and not record_title:
         errors.append("Please provide a dataset title.")
+    if not email_addrs:
+        errors.append("Please provide a contact email address.")
+    if has_doi == "no" and author_orcid:
+        valid, msg = verify_orcid(author_orcid)
+        if not valid:
+            errors.append(msg)
 
     if errors:
         for e in errors:
             st.error(e)
         st.stop()
 
-    primary_author = {
-        "first": author_first, "last": author_last,
-        "orcid": author_orcid, "affil": author_affil,
-    }
-    creators = build_creators(primary_author, collaborators)
 
     with st.spinner("Uploading to Zenodo…"):
         try:
             if has_doi == "yes":
-                record_id = add_existing_doi_to_community(ZENODO_TOKEN, existing_doi)
+                # json_resp, record_id = get_record(ZENODO_TOKEN, existing_doi)
+                record_id = add_existing_doi_to_community(ZENODO_TOKEN, record_id)
                 view_url   = f"https://zenodo.org/records/{record_id}"
                 st.markdown(f"""
                 <div class="success-box">
@@ -715,7 +971,16 @@ if submit:
                     "No login session is shared — visitors cannot edit the record from this link."
                 )
 
+                send_email(json_resp, email_addrs, True, ZENODO_COMMUNITY, mode="community_success")
+
             else:
+                primary_author = {
+                    "first": author_first, "last": author_last,
+                    "orcid": author_orcid, "affil": author_affil,
+                }
+                
+                creators = build_creators(primary_author, collaborators)
+
                 metadata = build_metadata(
                     title=record_title,
                     abstract_text=abstract,
@@ -727,9 +992,12 @@ if submit:
                     lat_val=st.session_state.sel_lat,
                     lon_val=st.session_state.sel_lon,
                     lic=license_choice,
+                    author_ror=selected_ror_id,
+                    scoop_concept_url=scoop_concept_url
                 )
 
                 draft_info = create_draft(ZENODO_TOKEN, metadata)
+
                 record_id  = draft_info["id"]
                 st.info(f"📝 Draft created (ID: {record_id})")
 
@@ -737,9 +1005,13 @@ if submit:
                 upload_file_to_draft(ZENODO_TOKEN, record_id, file_bytes_upload, uploaded_file.name)
                 st.info(f"📂 File '{uploaded_file.name}' uploaded.")
 
-                published = publish_draft(ZENODO_TOKEN, record_id)
-                doi_out   = published.get("doi", "n/a")
+                json_resp = publish_draft(ZENODO_TOKEN, record_id)
+                doi_out   = json_resp.get("doi", "n/a")
                 view_url  = f"https://zenodo.org/records/{record_id}"
+
+                added_to_community = add_record_to_community(ZENODO_TOKEN, record_id)
+
+                send_email(json_resp, email_addrs, added_to_community, ZENODO_COMMUNITY, mode="upload_success")
 
                 st.markdown(f"""
                 <div class="success-box">

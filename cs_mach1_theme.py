@@ -53,6 +53,7 @@ THEMES = {
     },
 }
 
+
 DEFAULT_THEME = "Ocean Blue"
 
 
@@ -64,7 +65,15 @@ def _build_css(palette: dict) -> str:
     font-size: 34px;
     font-weight: 700;
     color: {palette['brand']};
-    margin-bottom: 0px;
+    margin-top: 0px;
+    padding-top: 0px;
+}}
+.cs-main-header {{
+    font-size: 42px;
+    font-weight: 700;
+    color: ...;
+    margin: 0;
+    line-height: 1.1;
 }}
 .cs-sub-header {{
     font-size: 16px;
@@ -104,7 +113,7 @@ def apply_cs_mach1_theme(
     logo_width: int = 250,
     layout: str = "wide",
     default_theme: str = DEFAULT_THEME,
-    show_theme_picker: bool = True,
+    show_theme_picker: bool = False,
 ) -> str:
     """
     Call once at the top of your Streamlit script (before any other st.* call).
@@ -142,13 +151,32 @@ def apply_cs_mach1_theme(
                 key="cs_theme_picker",
             )
 
+    title_col, button_col = st.columns([5, 1.5])
+
+    with title_col:
+        st.markdown(
+            f"<div class='cs-main-header'>{main_title}</div>",
+            unsafe_allow_html=True,
+        )
+
+    with button_col:
+        st.link_button(
+            "Training Guidelines",
+            "https://cs-mach1.eu/training-guidelines",
+            use_container_width=True,
+        )
+
+    st.markdown(
+        f"<div class='cs-sub-header'>{subtitle}</div>",
+        unsafe_allow_html=True,
+    )
+    
     palette = THEMES[st.session_state["cs_theme"]]
     st.markdown(_build_css(palette), unsafe_allow_html=True)
 
-    
-    st.markdown(f"<div class='cs-main-header'>{main_title}</div>", unsafe_allow_html=True)
-    #st.image(logo_path, width=logo_width)
-    st.markdown(f"<div class='cs-sub-header'>{subtitle}</div>", unsafe_allow_html=True)
+    # st.markdown(f"<div class='cs-main-header'>{main_title}</div>", unsafe_allow_html=True)
+    # st.image(logo_path, width=logo_width)
+    # st.markdown(f"<div class='cs-sub-header'>{subtitle}</div>", unsafe_allow_html=True)
 
     return st.session_state["cs_theme"]
 
