@@ -1,96 +1,117 @@
-"""
-CS-MACH1 Zenodo Community Dataset Registration
-Streamlit app — EU-CS-MACH1 community upload with smart CSV/TXT pre-fill and map picker.
-Project: CS-MACH1 (https://cs-mach1.eu/)
-Funding: https://cordis.europa.eu/project/id/101214613
-"""
+email_addrs = st.text_input("Contact email address", placeholder="e.g. your.email@institution.edu")
 
-import io
-import streamlit as st
-import requests
-import pandas as pd
-import numpy as np
-import folium
-from streamlit_folium import st_folium
-from datetime import date
+try:
+    with open('gdpr.txt', 'r', encoding='utf-8') as f:
+        gdpr_text = f.read()
+    st.caption(gdpr_text)
+except Exception as e:
+    pass
 
-from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
-from email_service import send_email
-import re
-
-
-# Apply CS-MACH1 unified theme
-apply_cs_mach1_theme(
-    page_title="CS-MACH1 – Dataset Registration",
-    page_icon="logo.png",
-    main_title="CS-MACH1 Zenodo Uploader",
-    subtitle="Register marine citizen science datasets to the cs-mach1 community",
-    logo_width=220,
-    layout="centered"
+# ─── Submit ───────────────────────────────────────────────────────────────────
+st.markdown("---")
+submit = st.button(
+    "🚀 Register dataset to cs-mach1 community",
+    type="primary",
+    use_container_width=True,
 )
 
+if submit:
+    errors = []
+    if not ZENODO_TOKEN:
+        errors.append("Zenodo token missing from secrets.toml.")
+    if has_doi == "yes" and not existing_doi:
+        errors.append("Please enter the existing dataset DOI.")
+    if has_doi == "yes":
+        errors.append("This version of the uploader handles new uploads only. To submit an existing DOI to cs-mach1, open the record on Zenodo and use its community-submission option.")
+    if has_doi == "no" and not uploaded_file:
+        errors.append("Please upload a dataset file.")
+    if has_doi == "no" and not (author_first or author_last):
+        errors.append("Please enter at least the first author's name.")
+    if has_doi == "no" and not record_title:
+        errors.append("Please provide a dataset title.")
+    if not email_addrs:
+        errors.append("Please provide a contact email address.")
+    if has_doi == "no" and author_orcid:
+        valid, msg = verify_orcid(author_orcid)
+        if not valid:
+            errors.append(msg)
 
-# ─── Constants ────────────────────────────────────────────────────────────────
-ZENODO_API_URL   = "https://zenodo.org/api"
-ZENODO_COMMUNITY = "cs-mach1"
-CSMACH1_PROJECT  = "CS MACH1 – MArine Citizen science data Horizon"
-CSMACH1_URL      = "https://cs-mach1.eu/"
-CORDIS_ID        = "101214613"
-CORDIS_URL       = f"https://cordis.europa.eu/project/id/{CORDIS_ID}"
-FUNDING_PROGRAM  = "European Union's Horizon Europe research and innovation programme"
-FUNDING_GRANT    = "101214613"
+    if errors:
+        for e in errors:
+            st.error(e)
+        st.stop()
 
-# Default coordinates for map (Arctic / North Atlantic focus)
-DEFAULT_LAT = 70.0   # °N
-DEFAULT_LON = -10.0  # °E
 
-# Format registry
-FORMAT_INFO = {
-    "csv":     {"label": "CSV (Comma-Separated Values)",       "icon": "📊", "parseable": "csv"},
-    "tsv":     {"label": "TSV (Tab-Separated Values)",         "icon": "📊", "parseable": "csv"},
-    "txt":     {"label": "Plain text",                         "icon": "📄", "parseable": "txt"},
-    "nc":      {"label": "NetCDF (Network Common Data Form)",  "icon": "🌊", "parseable": False},
-    "nc4":     {"label": "NetCDF-4",                           "icon": "🌊", "parseable": False},
-    "hdf5":    {"label": "HDF5",                               "icon": "🗄️", "parseable": False},
-    "h5":      {"label": "HDF5",                               "icon": "🗄️", "parseable": False},
-    "json":    {"label": "JSON",                               "icon": "🔣", "parseable": False},
-    "geojson": {"label": "GeoJSON",                            "icon": "🗺️", "parseable": False},
-    "shp":     {"label": "Shapefile",                          "icon": "🗺️", "parseable": False},
-    "mat":     {"label": "MATLAB data file",                   "icon": "🔢", "parseable": False},
-    "zip":     {"label": "ZIP archive",                        "icon": "🗜️", "parseable": False},
-    "tar":     {"label": "TAR archive",                        "icon": "🗜️", "parseable": False},
-    "gz":      {"label": "GZip compressed",                    "icon": "🗜️", "parseable": False},
-    "pdf":     {"label": "PDF document",                       "icon": "📑", "parseable": False},
-    "xlsx":    {"label": "Excel spreadsheet",                  "icon": "📊", "parseable": False},
-    "xls":     {"label": "Excel spreadsheet (legacy)",         "icon": "📊", "parseable": False},
-}
+    with st.spinner("Uploading to Zenodo…"):
+        try:
+            primary_author = {
+                "first": author_first,
+                "last": author_last,
+                "orcid": author_orcid,
+                "affil": author_affil,
+            }
+            creators = build_creators(primary_author, collaborators)
 
-# Column name patterns
-LAT_NAMES   = {"lat", "latitude", "lat_deg", "latitude_deg", "ylat", "y"}
-LON_NAMES   = {"lon", "longitude", "long", "lon_deg", "longitude_deg", "xlon", "x"}
-TIME_NAMES  = {"time", "date", "datetime", "timestamp", "date_time", "time_utc", "date_utc"}
-DEPTH_NAMES = {"depth", "depth_m", "pressure", "pres", "z"}
+            metadata = build_metadata(
+                title=record_title,
+                abstract_text=abstract,
+                description_text=description,
+                creators=creators,
+                spatial=spatial_deployment,
+                proj=project_name,
+                kw=keywords,
+                lat_val=st.session_state.sel_lat,
+                lon_val=st.session_state.sel_lon,
+                lic=license_choice,
+                author_ror=selected_ror_id,
+                scoop_concept_url=scoop_concept_url,
+            )
 
-# ─── CSS ──────────────────────────────────────────────────────────────────────
-#st.image(logo_path, width=logo_width)
-st.markdown("""
-<style>
-    .cs-mach1-header {
-        display: flex; align-items: center; gap: 16px;
-        padding: 12px 0 24px 0;
-        border-bottom: 2px solid #1a4f8a; margin-bottom: 28px;
-    }
-    .cs-mach1-title    { color: #1a4f8a; font-size: 1.6rem; font-weight: 700; }
-    .cs-mach1-subtitle { color: #555; font-size: 0.85rem; }
-    .section-title {
-        font-size: 1rem; font-weight: 700; color: #1a4f8a;
-        text-transform: uppercase; letter-spacing: 0.05em;
-        border-bottom: 1px solid #cce0f5;
-        padding-bottom: 4px; margin-top: 28px; margin-bottom: 12px;
-    }
-    .funding-badge {
-        background: #eaf3fb; border-left: 4px solid #1a4f8a;
-        padding: 10px 14px; border-radius: 4px;
-        font-size: 0.82rem; color: #333; margin-bottom: 16px;
-    }
-    .format-badge {
+            deposition = create_deposition(ZENODO_TOKEN, metadata)
+            record_id = deposition["id"]
+            st.info(f"📝 Zenodo deposition created (ID: {record_id})")
+
+            file_bytes_upload = uploaded_file.getvalue()
+            upload_deposition_file(
+                ZENODO_TOKEN,
+                deposition,
+                file_bytes_upload,
+                uploaded_file.name,
+            )
+            st.info(f"📂 File '{uploaded_file.name}' uploaded.")
+
+            json_resp = publish_deposition(ZENODO_TOKEN, deposition)
+            doi_out = json_resp.get("doi") or json_resp.get("metadata", {}).get("doi") or "n/a"
+            view_url = json_resp.get("links", {}).get("html") or f"https://zenodo.org/records/{record_id}"
+
+            # The community is requested in deposition metadata. Curators may still need to accept it.
+            send_email(json_resp, email_addrs, True, ZENODO_COMMUNITY, mode="upload_success")
+
+            st.markdown(f"""
+            <div class="success-box">
+                ✅ <b>Dataset published and submitted to the cs-mach1 community for review.</b><br>
+                DOI: <code>{doi_out}</code><br>
+                Record ID: <code>{record_id}</code><br>
+                <a href="{view_url}" target="_blank" rel="noopener noreferrer">
+                🔗 View record on Zenodo →</a>
+            </div>""", unsafe_allow_html=True)
+            st.caption(
+                "The cs-mach1 community is requested in the deposition metadata. "
+                "Publication does not guarantee community acceptance; the community curators may need to review the submission."
+            )
+            st.balloons()
+
+        except requests.exceptions.HTTPError as e:
+            response = getattr(e, "response", None)
+            if response is not None:
+                st.error(f"❌ Zenodo HTTP error: {response.status_code} — {response.text}")
+            else:
+                st.error(f"❌ Zenodo HTTP error: {e}")
+        except ValueError as e:
+            st.error(f"❌ {e}")
+        except Exception as e:
+            st.error(f"❌ Unexpected error: {e}")
+
+# ─── Footer ───────────────────────────────────────────────────────────────────
+from cs_mach1_theme import cs_mach1_footer
+cs_mach1_footer("CS-MACH1 Zenodo Uploader • Marine Citizen Science Data Horizon")
