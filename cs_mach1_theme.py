@@ -3,12 +3,6 @@ cs_mach1_theme.py
 ------------------
 Unified CS-MACH1 branding & Streamlit page-setup helper.
 
-Replaces the per-repo duplicates (CS-MACH1-METEOTRACKER, CS-MACH1-SCUBA,
-CORA-vs-WOD) with a single configurable module. Supports multiple style
-presets, switchable via a selector rendered on the MAIN page (not the
-sidebar), so the same module/CSS can power every CS-MACH1 app while still
-letting each one pick its own look.
-
 Usage (top of any Streamlit script, before any other st.* call):
 
     from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
