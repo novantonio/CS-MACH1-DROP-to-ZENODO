@@ -470,7 +470,7 @@ def create_deposition(token: str, metadata: dict) -> dict | None:
     """Create an unpublished deposition."""
     try:
         response = requests.post(
-            f"{ZENODO_DEPOSITIONS_URL}/",
+            f"{ZENODO_DEPOSITIONS_URL}",
             headers=auth_headers(token, json_body=True),
             json={"metadata": metadata},
             timeout=60,
